@@ -11,37 +11,57 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Сервис управлления финансами.
+ * Реализация {@link FinanceService}.
  */
 @RequiredArgsConstructor
 public class FinanceServiceImpl implements FinanceService {
     private final StorageService storageService;
 
-    // 1. Создание пользовательской категории
+    /**
+     * Создание пользовательской категории.
+     *
+     * @param user данные пользователя
+     * @param name название новой категории
+     * @param type тип категории (доход или расход)
+     */
     public void createCategory(User user, String name, OperationType type) {
-        Wallet wallet = user.getWallet();
+        var wallet = user.getWallet();
         Optional<Category> existing = wallet.findCategory(name, type);
         if (existing.isPresent()) {
             throw new IllegalArgumentException("Категория '" + name + "' (" + type.getTitle() + ") уже существует.");
         }
-        Category category = new Category(name, type);
+        var category = new Category(name, type);
         wallet.addCategory(category);
     }
 
-    // 2. Добавление дохода
+    /**
+     * Добавление дохода.
+     *
+     * @param user         данные пользователя
+     * @param categoryName название категории дохода
+     * @param amount       сумма дохода
+     * @param description  комментарий к операции
+     */
     public void addIncome(User user, String categoryName, double amount, String description) {
-        Wallet wallet = user.getWallet();
-        // Если категории еще нет — создаем автоматически для удобства пользователя
-        Category category = wallet.findCategory(categoryName, OperationType.INCOME)
+        var wallet = user.getWallet();
+        var category = wallet.findCategory(categoryName, OperationType.INCOME)
                 .orElseGet(() -> new Category(categoryName, OperationType.INCOME));
 
         wallet.addOperation(new Income(amount, category, description));
     }
 
-    // 3. Добавление расхода с возвратом списка оповещений (если есть превышения)
+    /**
+     * Добавление расхода.
+     *
+     * @param user         данные пользователя
+     * @param categoryName название категории расхода
+     * @param amount       сумма расхода
+     * @param description  комментарий к операции
+     * @return список текстовых оповещений при превышении лимита бюджета или общих доходов
+     */
     public List<String> addExpense(User user, String categoryName, double amount, String description) {
-        Wallet wallet = user.getWallet();
-        Category category = wallet.findCategory(categoryName, OperationType.EXPENSE)
+        var wallet = user.getWallet();
+        var category = wallet.findCategory(categoryName, OperationType.EXPENSE)
                 .orElseGet(() -> new Category(categoryName, OperationType.EXPENSE));
 
         wallet.addOperation(new Expense(amount, category, description));
@@ -49,41 +69,30 @@ public class FinanceServiceImpl implements FinanceService {
         return checkAlerts(wallet, category);
     }
 
-    // 4. Установка бюджета на категорию расходов
+    /**
+     * Установка бюджета на категорию расходов.
+     *
+     * @param user         данные пользователя
+     * @param categoryName название категории расходов
+     * @param limit        лимит бюджета
+     */
     public void setBudget(User user, String categoryName, double limit) {
-        Wallet wallet = user.getWallet();
-        Category category = wallet.findCategory(categoryName, OperationType.EXPENSE)
+        var wallet = user.getWallet();
+        var category = wallet.findCategory(categoryName, OperationType.EXPENSE)
                 .orElseGet(() -> new Category(categoryName, OperationType.EXPENSE));
 
         wallet.setBudget(category, limit);
     }
 
-    // 5. Проверка оповещений по лимитам и общему балансу
-    private List<String> checkAlerts(Wallet wallet, Category category) {
-        List<String> alerts = new ArrayList<>();
-
-        // Проверка превышения бюджета по конкретной категории
-        if (wallet.hasBudget(category)) {
-            double limit = wallet.getBudget(category);
-            double spent = getTotalByCategory(wallet, category);
-            if (spent > limit) {
-                alerts.add(String.format("ВНИМАНИЕ! Превышен лимит бюджета по категории '%s' (Лимит: %.1f, Потрачено: %.1f, Перерасход: %.1f)",
-                        category.getName(), limit, spent, spent - limit));
-            }
-        }
-
-        // Проверка превышения общих расходов над общими доходами
-        double totalIncome = getTotalByType(wallet, OperationType.INCOME);
-        double totalExpense = getTotalByType(wallet, OperationType.EXPENSE);
-        if (totalExpense > totalIncome) {
-            alerts.add(String.format("ВНИМАНИЕ! Общие расходы (%.1f) превысили общие доходы (%.1f)!",
-                    totalExpense, totalIncome));
-        }
-
-        return alerts;
-    }
-
-    // 6. Перевод средств другому пользователю по логину (Дополнительное задание)
+    /**
+     * Перевод средств другому пользователю по логину.
+     *
+     * @param sender         пользователь-отправитель
+     * @param recipientLogin логин пользователя-получателя
+     * @param amount         сумма перевода
+     * @param comment        комментарий к переводу
+     * @return список текстовых оповещений отправителя при превышении лимитов
+     */
     public List<String> transfer(User sender, String recipientLogin, double amount, String comment) {
         if (sender.getLogin().equalsIgnoreCase(recipientLogin.trim())) {
             throw new IllegalArgumentException("Нельзя перевести средства самому себе.");
@@ -92,14 +101,12 @@ public class FinanceServiceImpl implements FinanceService {
             throw new IllegalArgumentException("Сумма перевода должна быть больше нуля.");
         }
 
-        User recipient = storageService.loadUser(recipientLogin)
+        var recipient = storageService.loadUser(recipientLogin)
                 .orElseThrow(() -> new IllegalArgumentException("Получатель с логином '" + recipientLogin + "' не найден."));
 
-        // Фиксируем расход у отправителя
         String outDesc = "Перевод пользователю " + recipient.getLogin() + (comment.isEmpty() ? "" : ": " + comment);
         List<String> alerts = addExpense(sender, "Переводы (исходящие)", amount, outDesc);
 
-        // Фиксируем доход у получателя и сразу сохраняем его кошелек на диск
         String inDesc = "Перевод от пользователя " + sender.getLogin() + (comment.isEmpty() ? "" : ": " + comment);
         addIncome(recipient, "Переводы (входящие)", amount, inDesc);
         storageService.saveUser(recipient);
@@ -107,7 +114,13 @@ public class FinanceServiceImpl implements FinanceService {
         return alerts;
     }
 
-    // 7. Подсчет общей суммы по типу (ДОХОД / РАСХОД)
+    /**
+     * Подсчет общей суммы операций по заданному типу.
+     *
+     * @param wallet кошелек пользователя
+     * @param type   тип операции (доход или расход)
+     * @return общая сумма операций выбранного типа
+     */
     public double getTotalByType(Wallet wallet, OperationType type) {
         return wallet.getOperations().stream()
                 .filter(op -> op.getType() == type)
@@ -115,7 +128,13 @@ public class FinanceServiceImpl implements FinanceService {
                 .sum();
     }
 
-    // 8. Подсчет суммы по конкретной категории
+    /**
+     * Подсчет суммы операций по конкретной категории.
+     *
+     * @param wallet   кошелек пользователя
+     * @param category категория операций
+     * @return общая сумма по указанной категории
+     */
     public double getTotalByCategory(Wallet wallet, Category category) {
         return wallet.getOperations().stream()
                 .filter(op -> op.getCategory().equals(category))
@@ -123,7 +142,15 @@ public class FinanceServiceImpl implements FinanceService {
                 .sum();
     }
 
-    // 9. Подсчет по нескольким выбранным категориям с проверкой существования
+    /**
+     * Подсчет сумм по нескольким выбранным категориям с проверкой их существования.
+     *
+     * @param wallet           кошелек пользователя
+     * @param categoryNames    список названий категорий для подсчета
+     * @param type             тип операций (доход или расход)
+     * @param notFoundWarnings список для записи предупреждений о ненайденных категориях
+     * @return карта с названиями найденных категорий и суммами по ним
+     */
     public Map<String, Double> calculateSelectedCategories(Wallet wallet, List<String> categoryNames, OperationType type, List<String> notFoundWarnings) {
         Map<String, Double> result = new LinkedHashMap<>();
         for (String rawName : categoryNames) {
@@ -141,17 +168,21 @@ public class FinanceServiceImpl implements FinanceService {
         return result;
     }
 
-    // 10. Формирование полного финансового отчета (как в примере из ТЗ)
+    /**
+     * Формирование полного финансового отчета по доходам, расходам и бюджетам.
+     *
+     * @param user данные пользователя
+     * @return сформированный текстовый отчет
+     */
     public String generateFullReport(User user) {
-        Wallet wallet = user.getWallet();
-        StringBuilder sb = new StringBuilder();
+        var wallet = user.getWallet();
+        var sb = new StringBuilder();
 
         double totalIncome = getTotalByType(wallet, OperationType.INCOME);
         double totalExpense = getTotalByType(wallet, OperationType.EXPENSE);
 
         sb.append(String.format(Locale.US, "Общий доход: %,.1f%n", totalIncome));
 
-        // Группировка доходов по категориям
         Map<String, Double> incomeByCat = wallet.getOperations().stream()
                 .filter(op -> op.getType() == OperationType.INCOME)
                 .collect(Collectors.groupingBy(
@@ -168,7 +199,6 @@ public class FinanceServiceImpl implements FinanceService {
 
         sb.append(String.format(Locale.US, "Общие расходы: %,.1f%n", totalExpense));
 
-        // Вывод бюджетов и остатков по категориям расходов
         Map<Category, Double> budgets = wallet.getCategoryBudgets();
         if (!budgets.isEmpty()) {
             sb.append("Бюджет по категориям:\n");
@@ -183,7 +213,12 @@ public class FinanceServiceImpl implements FinanceService {
         return sb.toString();
     }
 
-    // 11. Сохранение отчета в текстовый файл
+    /**
+     * Сохранение полного финансового отчета в текстовый файл.
+     *
+     * @param user     данные пользователя
+     * @param filePath путь и имя файла для сохранения отчета
+     */
     public void exportReportToFile(User user, String filePath) {
         String report = generateFullReport(user);
         try {
@@ -191,5 +226,27 @@ public class FinanceServiceImpl implements FinanceService {
         } catch (IOException e) {
             throw new RuntimeException("Не удалось сохранить отчет в файл: " + e.getMessage());
         }
+    }
+
+    private List<String> checkAlerts(Wallet wallet, Category category) {
+        List<String> alerts = new ArrayList<>();
+
+        if (wallet.hasBudget(category)) {
+            double limit = wallet.getBudget(category);
+            double spent = getTotalByCategory(wallet, category);
+            if (spent > limit) {
+                alerts.add(String.format("ВНИМАНИЕ! Превышен лимит бюджета по категории '%s' (Лимит: %.1f, Потрачено: %.1f, Перерасход: %.1f)",
+                        category.getName(), limit, spent, spent - limit));
+            }
+        }
+
+        double totalIncome = getTotalByType(wallet, OperationType.INCOME);
+        double totalExpense = getTotalByType(wallet, OperationType.EXPENSE);
+        if (totalExpense > totalIncome) {
+            alerts.add(String.format("ВНИМАНИЕ! Общие расходы (%.1f) превысили общие доходы (%.1f)!",
+                    totalExpense, totalIncome));
+        }
+
+        return alerts;
     }
 }

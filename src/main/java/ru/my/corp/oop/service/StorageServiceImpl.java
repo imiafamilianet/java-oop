@@ -8,9 +8,15 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Optional;
 
+/**
+ * Реализация {@link StorageService}.
+ */
 public class StorageServiceImpl implements StorageService {
     private static final String DATA_DIR = "data";
 
+    /**
+     * Конструктор.
+     */
     public StorageServiceImpl() {
         try {
             Files.createDirectories(Paths.get(DATA_DIR));
@@ -19,6 +25,11 @@ public class StorageServiceImpl implements StorageService {
         }
     }
 
+    /**
+     * Сохранение данных пользователя и его кошелька в файл.
+     *
+     * @param user данные пользователя для сохранения
+     */
     public void saveUser(User user) {
         if (user == null) return;
         Path filePath = getUserFilePath(user.getLogin());
@@ -29,6 +40,12 @@ public class StorageServiceImpl implements StorageService {
         }
     }
 
+    /**
+     * Загрузка данных пользователя по логину из файла.
+     *
+     * @param login логин пользователя
+     * @return Optional с объектом пользователя, если файл найден, иначе пустой Optional
+     */
     public Optional<User> loadUser(String login) {
         if (login == null || login.trim().isEmpty()) {
             return Optional.empty();
@@ -45,6 +62,12 @@ public class StorageServiceImpl implements StorageService {
         }
     }
 
+    /**
+     * Проверка существования сохраненного пользователя с указанным логином.
+     *
+     * @param login логин пользователя
+     * @return true, если данные пользователя существуют, иначе false
+     */
     public boolean userExists(String login) {
         if (login == null || login.trim().isEmpty()) return false;
         return Files.exists(getUserFilePath(login.trim()));

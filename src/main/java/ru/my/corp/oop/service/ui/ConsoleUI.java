@@ -8,12 +8,18 @@ import ru.my.corp.oop.service.AuthService;
 
 import java.util.*;
 
+/**
+ * Консольный интерфейс.
+ */
 @RequiredArgsConstructor
 public class ConsoleUI {
     private final AuthService authService;
     private final FinanceService financeService;
     private final Scanner scanner = new Scanner(System.in);
 
+    /**
+     * Точка входа.
+     */
     public void start() {
         System.out.println("=== Система управления личными финансами ===");
         boolean running = true;
